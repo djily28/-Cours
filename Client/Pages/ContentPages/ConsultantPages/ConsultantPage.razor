@@ -1,0 +1,414 @@
+﻿@implements IDisposable
+@if (allState.ShowConsultant)
+{
+    if (ShowMainPage)
+    {
+        <div class="container-fluid mt-5">
+            <div class="row">
+                <div class="col-lg-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <button class="btn btn-success" @onclick="ShowAddOrUpdateConsultantButtonClicked">
+                                <i class="bi bi-plus-circle-dotted"> </i> Add Consultant
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            @{
+                                var Tool = (new List<string>() { "Search", "ExcelExport", "PdfExport", "Print" });
+                            }
+                            <SfGrid DataSource="@Consultants" AllowPaging="true" AllowSorting="true"
+                                    Toolbar=@Tool AllowExcelExport="true" @ref="DefaultGrid" AllowPdfExport="true">
+                                <GridColumns>
+                                    <GridColumn HeaderText="Image">
+                                        <Template>
+                                            @{
+                                                var consultant = (context as Consultant);
+                                                <div class="image">
+                                                    <img src="@consultant!.Photo" alt="@consultant.FirstName" width="70" height="70" />
+                                                </div>
+                                            }
+                                        </Template>
+                                    </GridColumn>
+                                    <GridColumn Field=@nameof(Consultant.CivilId) HeaderText="Civil ID"></GridColumn>
+                                    <GridColumn Field=@nameof(Consultant.FileNumber) HeaderText="File Number"></GridColumn>
+                                    <GridColumn Field=@nameof(Consultant.FirstName) HeaderText="First Name"></GridColumn>
+                                    <GridColumn Field=@nameof(Consultant.LastName) HeaderText="Last Name"></GridColumn>
+                                    <GridColumn Field=@nameof(Consultant.TelephoneNumber) HeaderText="Telephone"></GridColumn>
+                                    <GridColumn Field=@nameof(Consultant.JobName) HeaderText="Job Name"></GridColumn>
+                                    <GridColumn Field=@nameof(Consultant.Salary) HeaderText="Salary" Format="C2"></GridColumn>
+                                    <GridColumn Field=@nameof(Consultant.StartDate) HeaderText="Start Date"></GridColumn>
+                                    <GridColumn Field=@nameof(Consultant.EndDate) HeaderText="End Date"></GridColumn>
+                                    <GridColumn HeaderText="Branch">
+                                        <Template>
+                                            @{
+                                                var consultant = (context as Consultant);
+                                                <div>
+                                                    @consultant!.Branch!.Name
+                                                </div>
+                                            }
+                                        </Template>
+                                    </GridColumn>
+                                    <GridColumn HeaderText="Town">
+                                        <Template>
+                                            @{
+                                                var consultant = (context as Consultant);
+                                                <div>
+                                                    @consultant!.Town!.Name
+                                                </div>
+                                            }
+                                        </Template>
+                                    </GridColumn>
+                                    <GridColumn HeaderText="Menu" HeaderTextAlign="TextAlign.Left">
+                                        <Template>
+                                            @{
+                                                var consultant = (context as Consultant);
+                                                <i class="bi bi-menu-down text-primary" id="cursorStyle" @onclick="()=>ShowMenuPopUp(consultant!)"></i>
+                                            }
+                                        </Template>
+                                    </GridColumn>
+                                </GridColumns>
+                            </SfGrid>
+                        </div>
+                        <div class="card-footer">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+<AddOrUpdateConsultantPage @ref="addOrUpdateConsultant"
+                           Consultant="Consultant"
+                           ShowAddOrUpdateConsultant="ShowAddOrUpdatePage"
+                           NotifyParentFormCloseClicked="NotifyParentFormCloseClicked"
+                           Countries="DefaultCountries"
+                           Cities="SelectedCities"
+                           Towns="SelectedTowns"
+                           Departments="DefaultDepartments"
+                           Branches="SelectedBranches"
+                           HandleCountrySelectedEvent="HandleCountrySelectedEvent"
+                           HandleCitySelectedEvent="HandleCitySelectedEvent"
+                           HandleDepartmentSelectedEvent="HandleDepartmentSelectedEvent"
+                           HandleSaveConsultantClickedEvent="HandleSaveConsultantClickedEvent">
+</AddOrUpdateConsultantPage>
+
+<ConsultantDetailPage ConsultantDetails="Consultant"
+                      ShowDetailsPage="ShowDetailsPage"
+                      HandleDetailsPageCloseBtnClicked="HandleDetailsPageCloseBtnClicked" />
+
+<ContextMenu @ref="contextMenu"
+             HandleDeleteClicked="DeleteClicked"
+             HandleEditClicked="EditClicked"
+             HandleViewClicked="ViewClicked"
+             HandleAddOvertimeClicked="AddOvertimeClicked"
+             HandleAddSanctionClicked="AddSanctionClicked"
+             HandleAddVacationClicked="AddVacationClicked" />
+
+
+<OvertimeDialog @ref="overtimeDialog" ItemModel="Overtime" OvertimeTypes="OvertimeTypes"
+                HandleSaveOperationEvent="SaveOvertimeEvent" />
+
+<SanctionDialog @ref="sanctionDialog" ItemModel="Sanction" SanctionTypes="SanctionTypes"
+                HandleSaveOperationEvent="SaveSanctionEvent" />
+
+<VacationDialog @ref="vacationDialog" ItemModel="Vacation"
+                VacationTypes="VacationTypes" HandleSaveOperationEvent="SaveVacationEvent" />
+@code {
+    private SfGrid<Consultant>? DefaultGrid;
+    AddOrUpdateConsultantPage? addOrUpdateConsultant;
+    public List<Consultant> Consultants { get; set; } = [];
+    public Consultant Consultant { get; set; } = new();
+
+    // Country  / City / Town
+    public List<Country> DefaultCountries { get; set; } = [];
+    public List<City> DefaultCities { get; set; } = [];
+    public List<Town> DefaultTowns { get; set; } = [];
+
+    // Department / Branch
+    public List<Department> DefaultDepartments { get; set; } = [];
+    public List<Branch> DefaultBranches { get; set; } = [];
+
+    public List<Branch> SelectedBranches { get; set; } = [];
+    public List<City> SelectedCities { get; set; } = [];
+    public List<Town> SelectedTowns { get; set; } = [];
+
+    protected async override Task OnInitializedAsync()
+    {
+        await LoadConsultants();
+        await LoadDefaults();
+        await GetOvertimeTypes();
+        await GetSanctionTypes();
+        await GetVacationTypes();
+        allState.Action += StateHasChanged;
+    }
+
+    private async Task LoadDefaults()
+    {
+        DefaultCountries = await countryService.GetAll(Constants.CountryBaseUrl);
+        DefaultCities = await cityService.GetAll(Constants.CityBaseUrl);
+        DefaultTowns = await townService.GetAll(Constants.TownBaseUrl);
+
+        DefaultDepartments = await departmentService.GetAll(Constants.DepartmentBaseUrl);
+        DefaultBranches = await branchService.GetAll(Constants.BranchBaseUrl);
+    }
+
+    //country select
+    private void HandleCountrySelectedEvent(int countryId) =>
+    SelectedCities = DefaultCities.Where(c => c.CountryId == countryId).ToList();
+
+    //city select
+    private void HandleCitySelectedEvent(int cityId) =>
+    SelectedTowns = DefaultTowns.Where(t => t.CityId == cityId).ToList();
+
+    //Department select
+    void HandleDepartmentSelectedEvent(int departmentId) =>
+    SelectedBranches = DefaultBranches.Where(d => d.DepartmentId == departmentId).ToList();
+
+    //Notify parent when Add or update employee form closes
+    private async Task NotifyParentFormCloseClicked()
+    {
+        ShowMainPage = true;
+        ShowAddOrUpdatePage = false;
+        await LoadConsultants();
+        SelectedConsultant = new();
+    }
+
+    //Load employees
+    private async Task LoadConsultants() => Consultants = await consultantService.GetAll(Constants.ConsultantBaseUrl);
+
+    //Save Employee
+    async Task HandleSaveConsultantClickedEvent(Consultant consultant)
+    {
+        bool successCheck = false;
+        if (consultant.Id > 0)
+        {
+            var result = await consultantService.Update(consultant, Constants.ConsultantBaseUrl);
+            successCheck = await DisplayMessage(result.Flag, result.Message);
+        }
+        else
+        {
+            var response = await consultantService.Insert(consultant, Constants.ConsultantBaseUrl);
+            successCheck = await DisplayMessage(response.Flag, response.Message);
+        }
+        if (successCheck)
+            addOrUpdateConsultant!.ClearContent();
+    }
+
+    public bool ShowMainPage { get; set; } = true;
+    public bool ShowAddOrUpdatePage { get; set; } = false;
+    async void ShowAddOrUpdateConsultantButtonClicked()
+    {
+        await LoadDefaults();
+        ShowMainPage = false;
+        ShowAddOrUpdatePage = true;
+        StateHasChanged();
+    }
+
+
+    //Context menu
+    //Show Menu Pop Up
+    ContextMenu? contextMenu;
+    public Consultant SelectedConsultant { get; set; } = new();
+    void ShowMenuPopUp(Consultant consultant)
+    {
+        SelectedConsultant = consultant;
+        contextMenu!.OpenContextMenu();
+    }
+
+    //Edit clicked
+    void EditClicked()
+    {
+        //EmployeeGrouping1
+        addOrUpdateConsultant!.Consultant.Id = SelectedConsultant.Id;
+        addOrUpdateConsultant!.ConsultantGroup1.FirstName = SelectedConsultant.FirstName;
+        addOrUpdateConsultant!.ConsultantGroup1.LastName = SelectedConsultant.LastName;
+        addOrUpdateConsultant!.ConsultantGroup1.TelephoneNumber = SelectedConsultant.TelephoneNumber;
+        addOrUpdateConsultant!.ConsultantGroup1.FileNumber = SelectedConsultant.FileNumber;
+        addOrUpdateConsultant!.ConsultantGroup1.Address = SelectedConsultant.Address;
+        addOrUpdateConsultant!.ConsultantGroup1.Photo = SelectedConsultant.Photo;
+        addOrUpdateConsultant!.ConsultantGroup1.CivilId = SelectedConsultant.CivilId;
+
+        //EmployeeGroup2
+        addOrUpdateConsultant!.ConsultantGroup2.JobName = SelectedConsultant.JobName;
+        addOrUpdateConsultant!.ConsultantGroup2.StartDate = SelectedConsultant.StartDate;
+        addOrUpdateConsultant!.ConsultantGroup2.EndDate = SelectedConsultant.EndDate;
+        addOrUpdateConsultant!.ConsultantGroup2.Salary = SelectedConsultant.Salary.ToString();
+        addOrUpdateConsultant!.ConsultantGroup2.Other = SelectedConsultant.Other;
+
+        //Department / Branch
+        addOrUpdateConsultant!.Department = SelectedConsultant.Branch!.Department!.Name;
+        addOrUpdateConsultant!.Branch = SelectedConsultant.Branch!.Name;
+
+        //Country / City / Town
+        addOrUpdateConsultant!.Country = SelectedConsultant.Town!.City!.Country!.Name;
+        addOrUpdateConsultant!.City = SelectedConsultant.Town!.City!.Name;
+        addOrUpdateConsultant!.Town = SelectedConsultant.Town!.Name;
+
+        //Title
+        addOrUpdateConsultant.Title = "Update";
+        SelectedConsultant = new();
+        contextMenu!.CloseContextMenu();
+        ShowAddOrUpdatePage = true;
+        ShowMainPage = false;
+    }
+
+    //Delete clicked
+    private async Task DeleteClicked()
+    {
+        contextMenu!.CloseContextMenu();
+        bool confirm = await dialogService
+        .ConfirmAsync($"Are you sure you wanna delete {SelectedConsultant.FirstName} {SelectedConsultant.LastName}'s data?", "Confirm Delete");
+        if (!confirm) return;
+
+        var response = await consultantService.DeleteById(SelectedConsultant.Id, Constants.ConsultantBaseUrl);
+        var result = await DisplayMessage(response.Flag, response.Message);
+        if (result)
+        {
+            SelectedConsultant = new();
+            await LoadConsultants();
+        }
+    }
+
+    //View Clicked
+    public bool ShowDetailsPage { get; set; } = false;
+    private void ViewClicked()
+    {
+        Consultant = SelectedConsultant;
+        contextMenu!.CloseContextMenu();
+        ShowDetailsPage = true;
+        ShowMainPage = false;
+        SelectedConsultant = new();
+    }
+
+    private async Task GetOvertimeTypes() =>
+    OvertimeTypes = await overtimeTypeService.GetAll(Constants.OvertimeTypeBaseUrl);
+
+    private async Task GetSanctionTypes() =>
+    SanctionTypes = await sanctionTypeService.GetAll(Constants.SanctionTypeBaseUrl);
+
+    private async Task GetVacationTypes() =>
+    VacationTypes = await vacationTypeService.GetAll(Constants.VacationTypeBaseUrl);
+
+
+
+
+    // Add Overtime clicked
+    OvertimeDialog? overtimeDialog;
+    Overtime Overtime = new();
+    List<OvertimeType> OvertimeTypes = [];
+    private void AddOvertimeClicked()
+    {
+        Overtime.ConsultantId = SelectedConsultant.Id;
+        contextMenu!.CloseContextMenu();
+        overtimeDialog!.OpenDialog();
+    }
+    //Save Overtime Handler
+    async Task SaveOvertimeEvent(Overtime item)
+    {
+        item.ConsultantId = SelectedConsultant.Id;
+        var (flag, message) = await overtimeService.Insert(item, Constants.OvertimeBaseUrl);
+        var response = await DisplayMessage(flag, message);
+        if (response)
+        {
+            SelectedConsultant = new();
+            Overtime = new();
+            overtimeDialog!.CloseDialog();
+        }
+    }
+
+
+
+
+    // Add Sanction clicked
+    SanctionDialog? sanctionDialog;
+    Sanction Sanction = new();
+    List<SanctionType> SanctionTypes = [];
+    private void AddSanctionClicked()
+    {
+        Sanction.ConsultantId = SelectedConsultant.Id;
+        contextMenu!.CloseContextMenu();
+        sanctionDialog!.OpenDialog();
+    }
+
+    //Save Sanction Handler
+    async Task SaveSanctionEvent(Sanction item)
+    {
+        item.ConsultantId = SelectedConsultant.Id;
+        var (flag, message) = await sanctionService.Insert(item, Constants.SanctionBaseUrl);
+        var response = await DisplayMessage(flag, message);
+        if (response)
+        {
+            SelectedConsultant = new();
+            Sanction = new();
+            sanctionDialog!.CloseDialog();
+        }
+    }
+
+
+
+    // Add Vacation clicked
+    VacationDialog? vacationDialog;
+    Vacation Vacation = new();
+    List<VacationType> VacationTypes = [];
+    private void AddVacationClicked()
+    {
+        Vacation.ConsultantId = SelectedConsultant.Id;
+        contextMenu!.CloseContextMenu();
+        vacationDialog!.OpenDialog();
+    }
+
+    //Save Vacation Handler
+    async Task SaveVacationEvent(Vacation item)
+    {
+        item.ConsultantId = SelectedConsultant.Id;
+        var (flag, message) = await vacationService.Insert(item, Constants.VacationBaseUrl);
+        var response = await DisplayMessage(flag, message);
+        if (response)
+        {
+            SelectedConsultant = new();
+            Vacation = new();
+            vacationDialog!.CloseDialog();
+        }
+    }
+
+
+
+    //Details employee Close btn clicked
+    void HandleDetailsPageCloseBtnClicked()
+    {
+        ShowDetailsPage = false;
+        ShowMainPage = true;
+    }
+
+    //Excel export / PDF Export
+    public async Task ToolbarClickHandler(Syncfusion.Blazor.Navigations.ClickEventArgs args)
+    {
+        if (args.Item.Text == "Excel Export")
+            await this.DefaultGrid!.ExcelExport()!;
+
+        if (args.Item.Text == "PDF Export")
+            await this.DefaultGrid!.PdfExport()!;
+    }
+
+
+    //Display message using dialog service
+    private async Task<bool> DisplayMessage(bool flag, string message)
+    {
+        if (flag)
+        {
+            await dialogService.AlertAsync(message, "Success Operation");
+            return true;
+        }
+        else
+        {
+            await dialogService.AlertAsync(message, "Alert!");
+            return false;
+        }
+    }
+
+    public void Dispose() { 
+        allState.Action -= StateHasChanged;
+    }
+
+}
